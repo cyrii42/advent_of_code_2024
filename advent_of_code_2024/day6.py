@@ -288,7 +288,6 @@ class Guard():
             return 1
 
     def increment_position_counter(self, next_point: Point) -> int:
-        # print(f"Incrementing counter for point {next_point}")
         if not next_point in self.positions_visited:
             self.total_positions += 1
             self.positions_visited.add(next_point)
@@ -297,9 +296,8 @@ class Guard():
         else:
             self.positions_visited_list.append(next_point)
             if len(self.positions_visited_list) - len(self.positions_visited) > 30000:
-                print(f"Found a loop @ {dt.datetime.now()}")
+                # print(f"Found a loop @ {dt.datetime.now()}")
                 return 1
-            # print(f"Set length: {len(self.positions_visited)} - list length: {len(self.positions_visited_list)} @ {dt.datetime.now()}")
             return 0
         
     def find_next_point(self) -> Point:
@@ -336,21 +334,20 @@ class Guard():
         Otherwise, increment `total_positions`, move to the next position, and try again.'''
         while True:
             if isinstance(self.map.get_point(self.point.row, self.point.col), MapEdge):
-                # print(f"Found exit!  Position:  ({self.point.row}, {self.point.col})")
+                # print(f"Found exit!  Position:  ({self.point.row}, {self.point.col}) (total positions: {self.total_positions})")
                 return self.total_positions
             else:
                 result = self.find_next_point()
-                if isinstance(result, int):
-                    return result
+                if isinstance(result, Point):
+                    self.point = result
                 else:
-                    self.point = self.find_next_point()
+                    return 1
 
     def patrol_part_two(self) -> int:
         ''' If current position is an edge of the map, we're done, so return the total moves. 
         Otherwise, increment `total_positions`, move to the next position, and try again.'''
         while True:
             if isinstance(self.map.get_point(self.point.row, self.point.col), MapEdge):
-                # print(f"Found exit!  Position:  ({self.point.row}, {self.point.col}) (total positions: {self.total_positions})")
                 return 0
             else:
                 result = self.find_next_point()
@@ -362,14 +359,12 @@ class Guard():
 def find_loops(first_guard: Guard, points_to_check: list[Point]) -> int:
     total = 0
     for visited_point in points_to_check:
-        print(f"Checking ({visited_point.col}, {visited_point.row})")
+        # print(f"Checking ({visited_point.col}, {visited_point.row})")
         new_map = Map(deepcopy(first_guard.map.row_list))
         new_obstacle = Obstacle(visited_point.col, visited_point.row, '#')
         new_map.row_list[visited_point.row].point_list[visited_point.col] = new_obstacle
-        # print(new_map)
         new_guard = find_guard(new_map)
         result = new_guard.patrol_part_two()
-        # print(result)
         total += result
     return total
             
