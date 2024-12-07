@@ -195,6 +195,7 @@ from copy import deepcopy
 from typing import NamedTuple, Optional
 from enum import Enum
 from dataclasses import dataclass, field
+from alive_progress import alive_it
 from advent_of_code_2024.constants import DATA_DIR
 
 EXAMPLE = DATA_DIR / 'day6_example.txt'
@@ -250,20 +251,20 @@ class Map():
         row = self.row_list[row_num]
         return row.get_point(col_num)
 
+class InfiniteLoop(Exception):
+    ...
+
     
 @dataclass
 class Guard():
     point: Point
     map: Map = field(repr=False)
     total_positions: int = field(default=1, repr=False)
-    loop_found: bool = field(default=False, repr=False)
-    just_avoided_obstacle: int = field(default=0, repr=False)
     positions_visited: set[Point] = field(default_factory=set, repr=False)
-    positions_visited_list: list[Point] = field(default_factory=list, repr=False)
+    positions_directions_visited: set[tuple[Point, Direction]] = field(default_factory=set, repr=False)
 
     def __post_init__(self):
         self.direction = self.get_initial_direction()
-        self.positions_visited.add(self.point)
 
     def get_initial_direction(self) -> Direction:
         match self.point.char:
@@ -278,33 +279,23 @@ class Guard():
             case _:
                 raise ValueError
 
-    def rotate(self) -> int:
-        try:
-            new_value = (self.direction.value + 1) % 4
-            self.direction = Direction(new_value)
-            return 0
-        except RecursionError:
-            print('aaa')
-            return 1
+    def rotate(self) -> None:
+        new_value = (self.direction.value + 1) % 4
+        self.direction = Direction(new_value)
 
-    def increment_position_counter(self, next_point: Point) -> int:
+    def increment_position_counter(self, next_point: Point) -> None:
+        if (next_point, self.direction) in self.positions_directions_visited:
+            raise InfiniteLoop
         if not next_point in self.positions_visited:
             self.total_positions += 1
             self.positions_visited.add(next_point)
-            self.positions_visited_list.append(next_point)
-            return 0
-        else:
-            self.positions_visited_list.append(next_point)
-            if len(self.positions_visited_list) - len(self.positions_visited) > 30000:
-                # print(f"Found a loop @ {dt.datetime.now()}")
-                return 1
-            return 0
+            self.positions_directions_visited.add((next_point, self.direction))      
         
     def find_next_point(self) -> Point:
         ''' Determine the next point based on current direction.  If next point is an obstacle, rotate and try again.'''
-
         current_row = self.point.row
         current_col = self.point.col
+        
         match self.direction:
             case Direction.UP:
                 next_point = self.map.get_point(current_row - 1, current_col)
@@ -316,72 +307,35 @@ class Guard():
                 next_point = self.map.get_point(current_row, current_col - 1)
                 
         if isinstance(next_point, Obstacle):
-            # print(f"Current position: ({self.point.row}, {self.point.col}).  Obstacle at ({next_point.row}, {next_point.col})!  Rotating...")
-                if self.rotate() == 1:
-                    return 1
-                else:
-                    return self.find_next_point()
+            self.rotate()
+            return self.find_next_point()
         else:
-            # print(f"Current position: ({self.point.row}, {self.point.col}).  Moving to ({next_point.row}, {next_point.col}).  (total positions: {self.total_positions})")
-            result = self.increment_position_counter(next_point)
-            if result == 0:
-                return next_point
-            else:
-                return result
-
+            self.increment_position_counter(next_point)
+            return next_point
+ 
     def patrol(self) -> int:
         ''' If current position is an edge of the map, we're done, so return the total moves. 
         Otherwise, increment `total_positions`, move to the next position, and try again.'''
+        self.positions_visited.add(self.point)
         while True:
             if isinstance(self.map.get_point(self.point.row, self.point.col), MapEdge):
-                # print(f"Found exit!  Position:  ({self.point.row}, {self.point.col}) (total positions: {self.total_positions})")
-                return self.total_positions
+                return self.total_positions  # we found an exit!
             else:
-                result = self.find_next_point()
-                if isinstance(result, Point):
-                    self.point = result
-                else:
-                    return 1
-
-    def patrol_part_two(self) -> int:
-        ''' If current position is an edge of the map, we're done, so return the total moves. 
-        Otherwise, increment `total_positions`, move to the next position, and try again.'''
-        while True:
-            if isinstance(self.map.get_point(self.point.row, self.point.col), MapEdge):
-                return 0
-            else:
-                result = self.find_next_point()
-                if isinstance(result, Point):
-                    self.point = result
-                else:
-                    return 1
-                
-def find_loops(first_guard: Guard, points_to_check: list[Point]) -> int:
-    total = 0
-    for visited_point in points_to_check:
-        # print(f"Checking ({visited_point.col}, {visited_point.row})")
-        new_map = Map(deepcopy(first_guard.map.row_list))
-        new_obstacle = Obstacle(visited_point.col, visited_point.row, '#')
-        new_map.row_list[visited_point.row].point_list[visited_point.col] = new_obstacle
-        new_guard = find_guard(new_map)
-        result = new_guard.patrol_part_two()
-        total += result
-    return total
-            
-
-
+                self.point = self.find_next_point()
+          
 
 def find_guard(map: Map) -> Guard:
-    for y, row in enumerate(map.row_list):
-        for x, point in enumerate(row.point_list):
+    for row in map.row_list:
+        for point in row.point_list:
             if point.char in ['^', '>', '<', 'v']:
                 return Guard(point, map)
-    raise ValueError
+    raise ValueError("Could not find a guard position in map.")
 
 
 def create_map_row(line: str, row_num: int, total_map_height: int) -> MapRow:
     total_map_width = len(line)
     point_list = []
+    
     for col_num, char in enumerate(line):
         if char == '#':
             point_list.append(Obstacle(col_num, row_num, char))
@@ -400,6 +354,19 @@ def create_map(filename: Path) -> Map:
     row_list = [create_map_row(line, row_num, len(line_list)) for row_num, line in enumerate(line_list)]
         
     return Map(row_list)
+
+def find_loops(first_guard: Guard, points_to_check: list[Point]) -> int:
+    total = 0
+    for visited_point in alive_it(points_to_check):
+        new_map = Map(deepcopy(first_guard.map.row_list))
+        new_obstacle = Obstacle(visited_point.col, visited_point.row, '#')
+        new_map.row_list[visited_point.row].point_list[visited_point.col] = new_obstacle
+        new_guard = find_guard(new_map)
+        try:
+            new_guard.patrol()
+        except InfiniteLoop:
+            total += 1
+    return total
 
 
 def part_one(filename: Path) -> int:
