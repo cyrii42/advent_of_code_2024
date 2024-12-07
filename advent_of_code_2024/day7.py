@@ -129,6 +129,5 @@ def main():
     print(f"Part Two (example):  {part_two(EXAMPLE)}") # should be 11387
     print(f"Part Two (input):  {part_two(INPUT)}") # 254136560217241
 
-
 if __name__ == '__main__':
     main()
