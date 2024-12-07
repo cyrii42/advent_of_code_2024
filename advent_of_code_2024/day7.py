@@ -97,7 +97,6 @@ def parse_operator_list(number_list: list[int], operator_list: list[str]) -> int
     number_list.insert(0, result)
     return parse_operator_list(number_list, operator_list)
 
-
 def perform_calculation(num_1: int, num_2: int, operator: str) -> int:
     match operator:
         case '+': return num_1 + num_2
@@ -105,7 +104,6 @@ def perform_calculation(num_1: int, num_2: int, operator: str) -> int:
         case '||': return int(f"{num_1}{num_2}")
         case _: raise ValueError
     
-
 def find_calibration_result(filename: Path, operator_list: list[str]) -> int:
     input_data = ingest_data(filename)
 
@@ -118,13 +116,11 @@ def find_calibration_result(filename: Path, operator_list: list[str]) -> int:
         
     return sum(valid_equations)
 
-
 def part_one(filename: Path) -> int:
     return find_calibration_result(filename, OPERATORS_PART_ONE)
 
 def part_two(filename: Path) -> int:
     return find_calibration_result(filename, OPERATORS_PART_TWO)
-
 
 def main():
     print(f"Part One (example):  {part_one(EXAMPLE)}") # should be 3749
