@@ -67,6 +67,64 @@ This larger example has 9 trailheads. Considering the trailheads in reading orde
 
 The reindeer gleefully carries over a protractor and adds it to the pile. What is the sum of the scores of all trailheads on your topographic map?
 
+--- Part Two ---
+
+The reindeer spends a few minutes reviewing your hiking trail map before realizing something, disappearing for a few minutes, and finally returning with yet another slightly-charred piece of paper.
+
+The paper describes a second way to measure a trailhead called its rating. A trailhead's rating is the number of distinct hiking trails which begin at that trailhead. For example:
+
+.....0.
+..4321.
+..5..2.
+..6543.
+..7..4.
+..8765.
+..9....
+
+The above map has a single trailhead; its rating is 3 because there are exactly three distinct hiking trails which begin at that position:
+
+.....0.   .....0.   .....0.
+..4321.   .....1.   .....1.
+..5....   .....2.   .....2.
+..6....   ..6543.   .....3.
+..7....   ..7....   .....4.
+..8....   ..8....   ..8765.
+..9....   ..9....   ..9....
+
+Here is a map containing a single trailhead with rating 13:
+
+..90..9
+...1.98
+...2..7
+6543456
+765.987
+876....
+987....
+
+This map contains a single trailhead with rating 227 (because there are 121 distinct hiking trails that lead to the 9 on the right edge and 106 that lead to the 9 on the bottom edge):
+
+012345
+123456
+234567
+345678
+4.6789
+56789.
+
+Here's the larger example from before:
+
+89010123
+78121874
+87430965
+96549874
+45678903
+32019012
+01329801
+10456732
+
+Considering its trailheads in reading order, they have ratings of 20, 24, 10, 4, 1, 4, 5, 8, and 5. The sum of all trailhead ratings in this larger example topographic map is 81.
+
+You're not sure how, but the reindeer seems to have crafted some tiny flags out of toothpicks and bits of paper and is using them to mark trailheads on your topographic map. What is the sum of the ratings of all trailheads?
+
 '''
 
 from pathlib import Path
@@ -85,6 +143,7 @@ from advent_of_code_2024.constants import DATA_DIR
 
 EXAMPLE = DATA_DIR / 'day10_example.txt'
 INPUT = DATA_DIR / 'day10_input.txt'
+FULL_TRAIL_SET = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
 
 class Direction(Enum):
     UP = 0
@@ -98,9 +157,26 @@ class Position():
     col_num: int
     height: int
 
+    def __post_init__(self):
+        if self.height < 0 or self.height > 9:
+            raise ValueError
+
 @dataclass(frozen=True)
 class Trailhead(Position):
     ...
+
+@dataclass(frozen=True)
+class Trail():
+    positions: frozenset[Position]
+
+    def __post_init__(self):
+        if len(self.positions) != 10:
+            print(f"Trail created with {len(set(self.positions))} unique positions (should be 10):  {self.positions}")
+        
+        trail_set = set([position.height for position in self.positions])
+        if trail_set != FULL_TRAIL_SET:
+            raise ValueError(f"Invalid trail: {trail_set} (should be 0 through 9)")
+        
 
 @dataclass
 class MapRow():
@@ -156,10 +232,23 @@ class Map():
             total += self.score_trailhead(trailhead)
         return total
 
+    def find_hiking_trails_part_two(self) -> int:
+        total = 0
+        for trailhead in self.trailheads:
+            total += self.score_trailhead_part_two(trailhead)
+        return total
+
     def score_trailhead(self, trailhead: Trailhead) -> int:
         hiker = Hiker(trailhead, self)
         hiker.find_trails()
         trailhead_score = len(hiker.summits_found)
+        print(f"Trailhead ({trailhead}) score: {trailhead_score}")
+        return trailhead_score
+
+    def score_trailhead_part_two(self, trailhead: Trailhead) -> int:
+        hiker = Hiker(trailhead, self)
+        hiker.find_trails_part_two()
+        trailhead_score = len(hiker.valid_trails_found)
         print(f"Trailhead ({trailhead}) score: {trailhead_score}")
         return trailhead_score
 
@@ -168,6 +257,7 @@ class Hiker():
     position: Position
     map: Map = field(repr=False)
     summits_found: set[Position] = field(default_factory=set, repr=False)
+    valid_trails_found: set[Trail] = field(default_factory=set, repr=False)
 
     def __post_init__(self):
         self.starting_position = self.position
@@ -205,6 +295,30 @@ class Hiker():
             self.position = position
             self.find_trails()
         return None
+
+    def find_trails_part_two(self, running_position_set: set[Position] = set()) -> None:
+        if len(running_position_set) == 0: 
+            running_position_set.add(self.position)
+        next_positions = [self.find_next_position(direction) for direction in Direction]
+        if not any(next_positions):
+            running_position_set.clear()
+        for position in next_positions:
+            if not position:
+                continue
+            if position.height == 9 and position not in running_position_set and position not in self.summits_found:
+                print(f"Found a new summit ({position}) from trailhead:  {self.starting_position}")
+                self.summits_found.add(position)
+                running_position_set.add(position)
+                new_trail = Trail(frozenset(running_position_set))
+                self.valid_trails_found.add(new_trail)
+                running_position_set.remove(position)
+                self.position = position
+                self.find_trails_part_two()
+            else:
+                running_position_set.add(position)
+                self.position = position
+                self.find_trails_part_two()
+        return None
             
 
 def create_map_row(line: str, row_num: int, total_map_height: int) -> MapRow:
@@ -229,16 +343,39 @@ def part_one(filename: Path):
 
 
 def part_two(filename: Path):
-    ...
+    map = create_map(filename)
+    return map.find_hiking_trails_part_two()
+
 
 def main():
-    print(f"Part One (example):  {part_one(EXAMPLE)}") # 36
-    print(f"Part One (input):  {part_one(INPUT)}") # 697 is too high
+    # print(f"Part One (example):  {part_one(EXAMPLE)}") # 36
+    # print(f"Part One (input):  {part_one(INPUT)}") # 697 is too high
     # print()
-    # print(f"Part Two (example):  {part_two(EXAMPLE)}") # 
+    print(f"Part Two (example):  {part_two(EXAMPLE)}") # 81
     # print(f"Part Two (input):  {part_two(INPUT)}") # 
-        
+    # test_trail()
 
+def test_trail():
+    a = Trailhead(1, 0, 0)
+    b = Position(1, 1, 1)
+    c = Position(1, 2, 2)
+    d = Position(1, 3, 4)
+    e = Position(1, 4, 3)
+    f = Position(1, 5, 5)
+    g = Position(2, 4, 6)
+    h = Position(2, 3, 9)
+    i = Position(2, 2, 8)
+    j = Position(2, 1, 7)
+
+    ppppp = {a, b, c, d, e, f, g, h, i, j}    
+
+    test_trail = Trail(frozenset(ppppp))
+    test_trail2 = Trail(frozenset(ppppp))
+
+    print(test_trail == test_trail2)
+
+    aaa = set()
+    aaa.add(test_trail)
 
     
 
