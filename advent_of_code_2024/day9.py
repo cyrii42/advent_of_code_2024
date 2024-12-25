@@ -131,20 +131,24 @@ class Filesystem():
         for file in reversed(non_empty_files):
             for i, test_file in enumerate(self.files):
                 if test_file.id is None and test_file.length >= file.length:
-                    print(f"Moving File {file.id} to position {i}...")
                     self.files[i] = File(length=file.length,
                                          id=file.id)
                     if test_file.length > file.length:
                         self.files.insert(i+1, File(length=test_file.length - file.length,
                                                     id=None))
-                    # print(self.files)
                     break
+        self.clean_up()
         self.populate_block_list()
             
-    def clear_moved_file(self, moving_file: File):
-        for file in reversed(self.files):
-            if file.id == moving_file.id:
-                file.id = None
+    def clean_up(self):
+        running_set: set[int] = set()
+        for i, file in enumerate(self.files):
+            if file.id is None:
+                continue
+            elif file.id in running_set:
+                self.files[i] = File(length=file.length, id=None)
+            else:
+                running_set.add(file.id)
             
     def calculate_checksum(self) -> int:
         total = 0
@@ -179,18 +183,16 @@ def part_one(filename: Path):
 def part_two(filename: Path):
     input = ingest_data(filename)
     filesystem = create_filesystem(input)
-    print(filesystem)
     filesystem.compress_part_two()
-    print(filesystem)
 
     return filesystem.calculate_checksum()
 
 def main():
     print(f"Part One (example):  {part_one(EXAMPLE)}") # 1928
-    # print(f"Part One (input):  {part_one(INPUT)}") # 6385338159127
+    print(f"Part One (input):  {part_one(INPUT)}") # 6385338159127
     print()
     print(f"Part Two (example):  {part_two(EXAMPLE)}") # 2858
-    # print(f"Part Two (input):  {part_two(INPUT)}")
+    print(f"Part Two (input):  {part_two(INPUT)}") # 6415163624282
 
 
 
