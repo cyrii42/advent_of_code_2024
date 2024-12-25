@@ -142,6 +142,8 @@ class Map():
         return self.row_list[row_num]
 
     def get_position(self, row_num: int, col_num: int) -> Position | None:
+        if row_num < 0 or col_num < 0:
+            return None
         if row_num >= self.width or col_num >= self.height:
             return None
         else:
@@ -157,16 +159,18 @@ class Map():
     def score_trailhead(self, trailhead: Trailhead) -> int:
         hiker = Hiker(trailhead, self)
         hiker.find_trails()
-        trailhead_score = hiker.hiking_trails_found
-        print(f"Trailhead score: {trailhead_score}")
+        trailhead_score = len(hiker.summits_found)
+        print(f"Trailhead ({trailhead}) score: {trailhead_score}")
         return trailhead_score
 
 @dataclass
 class Hiker():
     position: Position
     map: Map = field(repr=False)
-    positions_visited: set[Position] = field(default_factory=set, repr=False)
-    hiking_trails_found: int = 0
+    summits_found: set[Position] = field(default_factory=set, repr=False)
+
+    def __post_init__(self):
+        self.starting_position = self.position
         
     def find_next_position(self, direction: Direction) -> Position | None:
         ''' Determine the next position based on input direction.'''
@@ -182,26 +186,26 @@ class Hiker():
                 next_position = self.map.get_position(current_row + 1, current_col)
             case Direction.LEFT:
                 next_position = self.map.get_position(current_row, current_col - 1)
-                
-        return next_position
+
+        if next_position is None:
+            return None
+        elif self.position.height + 1 == next_position.height:
+            return next_position
+        else:
+            return None
  
-    def find_trails(self) -> bool:
-        for direction in Direction:
-            next_position = self.find_next_position(direction)
-            if next_position is None:
-                # print("hit a wall")
+    def find_trails(self) -> None:
+        next_positions = [self.find_next_position(direction) for direction in Direction]
+        for position in next_positions:
+            if not position:
                 continue
-            elif self.position.height == 8 and next_position.height == 9:
-                # print("Found a trail!")
-                self.hiking_trails_found += 1
-                # return True  # we found a valid trail!
-            elif self.position.height + 1 == next_position.height:
-                self.position = next_position
-                return self.find_trails()
-            # else:
-                # print("booop")
-                # return False
-        return False
+            if position.height == 9 and position not in self.summits_found:
+                print(f"Found a new summit ({position}) from trailhead:  {self.starting_position}")
+                self.summits_found.add(position)
+            self.position = position
+            self.find_trails()
+        return None
+            
 
 def create_map_row(line: str, row_num: int, total_map_height: int) -> MapRow:
     position_list = []
@@ -228,13 +232,12 @@ def part_two(filename: Path):
     ...
 
 def main():
-    print(f"Part One (example):  {part_one(EXAMPLE)}") # 
-    # print(f"Part One (input):  {part_one(INPUT)}") # 
+    print(f"Part One (example):  {part_one(EXAMPLE)}") # 36
+    print(f"Part One (input):  {part_one(INPUT)}") # 697 is too high
     # print()
     # print(f"Part Two (example):  {part_two(EXAMPLE)}") # 
     # print(f"Part Two (input):  {part_two(INPUT)}") # 
-
-
+        
 
 
     
