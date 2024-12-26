@@ -163,20 +163,7 @@ class Position():
 
 @dataclass(frozen=True)
 class Trailhead(Position):
-    ...
-
-@dataclass(frozen=True)
-class Trail():
-    positions: frozenset[Position]
-
-    def __post_init__(self):
-        if len(self.positions) != 10:
-            print(f"Trail created with {len(set(self.positions))} unique positions (should be 10):  {self.positions}")
-        
-        trail_set = set([position.height for position in self.positions])
-        if trail_set != FULL_TRAIL_SET:
-            raise ValueError(f"Invalid trail: {trail_set} (should be 0 through 9)")
-        
+    ...       
 
 @dataclass
 class MapRow():
@@ -242,14 +229,14 @@ class Map():
         hiker = Hiker(trailhead, self)
         hiker.find_trails()
         trailhead_score = len(hiker.summits_found)
-        print(f"Trailhead ({trailhead}) score: {trailhead_score}")
+        # print(f"Trailhead ({trailhead}) score: {trailhead_score}")
         return trailhead_score
 
     def score_trailhead_part_two(self, trailhead: Trailhead) -> int:
         hiker = Hiker(trailhead, self)
         hiker.find_trails_part_two()
-        trailhead_score = len(hiker.valid_trails_found)
-        print(f"Trailhead ({trailhead}) score: {trailhead_score}")
+        trailhead_score = len(hiker.summits_found_part_two)
+        # print(f"Trailhead ({trailhead}) score: {trailhead_score}")
         return trailhead_score
 
 @dataclass
@@ -257,7 +244,7 @@ class Hiker():
     position: Position
     map: Map = field(repr=False)
     summits_found: set[Position] = field(default_factory=set, repr=False)
-    valid_trails_found: set[Trail] = field(default_factory=set, repr=False)
+    summits_found_part_two: list[Position] = field(default_factory=list, repr=False)
 
     def __post_init__(self):
         self.starting_position = self.position
@@ -290,36 +277,23 @@ class Hiker():
             if not position:
                 continue
             if position.height == 9 and position not in self.summits_found:
-                print(f"Found a new summit ({position}) from trailhead:  {self.starting_position}")
+                # print(f"Found a new summit ({position}) from trailhead:  {self.starting_position}")
                 self.summits_found.add(position)
             self.position = position
             self.find_trails()
         return None
 
-    def find_trails_part_two(self, running_position_set: set[Position] = set()) -> None:
-        if len(running_position_set) == 0: 
-            running_position_set.add(self.position)
+    def find_trails_part_two(self) -> None:
         next_positions = [self.find_next_position(direction) for direction in Direction]
-        if not any(next_positions):
-            running_position_set.clear()
         for position in next_positions:
             if not position:
                 continue
-            if position.height == 9 and position not in running_position_set and position not in self.summits_found:
-                print(f"Found a new summit ({position}) from trailhead:  {self.starting_position}")
-                self.summits_found.add(position)
-                running_position_set.add(position)
-                new_trail = Trail(frozenset(running_position_set))
-                self.valid_trails_found.add(new_trail)
-                running_position_set.remove(position)
-                self.position = position
-                self.find_trails_part_two()
-            else:
-                running_position_set.add(position)
-                self.position = position
-                self.find_trails_part_two()
+            if position.height == 9:
+                # print(f"Found a new PART TWO summit ({position}) from trailhead:  {self.starting_position}")
+                self.summits_found_part_two.append(position)
+            self.position = position
+            self.find_trails_part_two()
         return None
-            
 
 def create_map_row(line: str, row_num: int, total_map_height: int) -> MapRow:
     position_list = []
@@ -348,36 +322,12 @@ def part_two(filename: Path):
 
 
 def main():
-    # print(f"Part One (example):  {part_one(EXAMPLE)}") # 36
-    # print(f"Part One (input):  {part_one(INPUT)}") # 697 is too high
-    # print()
+    print(f"Part One (example):  {part_one(EXAMPLE)}") # 36
+    print(f"Part One (input):  {part_one(INPUT)}") # 688
+    print()
     print(f"Part Two (example):  {part_two(EXAMPLE)}") # 81
-    # print(f"Part Two (input):  {part_two(INPUT)}") # 
-    # test_trail()
-
-def test_trail():
-    a = Trailhead(1, 0, 0)
-    b = Position(1, 1, 1)
-    c = Position(1, 2, 2)
-    d = Position(1, 3, 4)
-    e = Position(1, 4, 3)
-    f = Position(1, 5, 5)
-    g = Position(2, 4, 6)
-    h = Position(2, 3, 9)
-    i = Position(2, 2, 8)
-    j = Position(2, 1, 7)
-
-    ppppp = {a, b, c, d, e, f, g, h, i, j}    
-
-    test_trail = Trail(frozenset(ppppp))
-    test_trail2 = Trail(frozenset(ppppp))
-
-    print(test_trail == test_trail2)
-
-    aaa = set()
-    aaa.add(test_trail)
-
-    
+    print(f"Part Two (input):  {part_two(INPUT)}") # 1459
+   
 
 
 if __name__ == '__main__':
