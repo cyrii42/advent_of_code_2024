@@ -124,14 +124,18 @@ class Point():
     row_num: int
     col_num: int
     char: str
-    up: Optional[str] = None
-    right: Optional[str] = None
-    down: Optional[str] = None
-    left: Optional[str] = None
+    up: Optional[str] = field(default=None, repr=False)
+    right: Optional[str] = field(default=None, repr=False)
+    down: Optional[str] = field(default=None, repr=False)
+    left: Optional[str] = field(default=None, repr=False)
 
     @property
     def all_neighbor_chars(self) -> list[str | None]:
         return [self.up, self.right, self.down, self.left]
+
+    @property
+    def location(self) -> str:
+        return f"({self.row_num},{self.col_num})"
 
     @property
     def edge_count(self) -> int:
@@ -165,12 +169,14 @@ class Point():
             raise ValueError(f"{self}")
 
     def check_adjacency(self, point: "Point") -> bool:
+        if point == self:
+            return True
         if point.char == self.char and abs(self.row_num - point.row_num) <= 1 and abs(self.col_num - point.col_num) <= 1:
             return True
         else:
             return False
         
-@dataclass(unsafe_hash=True)
+@dataclass
 class GardenPlot():
     points: set[Point]
 
@@ -180,6 +186,10 @@ class GardenPlot():
             raise ValueError(f"ERROR:  More than 1 unique plant type in GardenPlot:  {self.points}")
         else:
             return list(self.points)[0].char
+
+    @property
+    def locations(self) -> str:
+        return ''.join(f"{point.location}" for point in self.points)
 
     @property
     def num_points(self) -> int:
@@ -198,15 +208,13 @@ class GardenPlot():
         return self.area * self.total_edges
 
     def check_point_adjacency(self, point: Point) -> bool:
-        if point.char == self.char and any(x.check_adjacency(point) for x in self.points):
+        if any(x.check_adjacency(point) for x in self.points):
             return True
         else:
             return False
 
     def check_plot_adjacency(self, plot: "GardenPlot") -> bool:
-        if plot == self:
-            return False
-        if plot.char == self.char and any(self.check_point_adjacency(x) for x in plot.points):
+        if any(self.check_point_adjacency(x) for x in plot.points):
             return True
         return False
 
@@ -299,40 +307,84 @@ class Map():
         self.row_list = new_row_list
 
     def find_plots(self) -> None:
-        def find_matching_plot(next_point: Point) -> GardenPlot | None:
-                for plot in self.plots_found:
-                    if plot.check_point_adjacency(next_point):
-                        return plot
-                return None
-            
+        plots_to_remove = []
         for point in alive_it(self.all_points):
-            matching_plot = find_matching_plot(point)
-            if matching_plot:
-                matching_plot.points.add(point)
+            adjacent_plots = [plot for plot in self.plots_found if plot.check_point_adjacency(point)]
+            if len(adjacent_plots) == 1:
+                plot = adjacent_plots[0]
+                # print(f"Found 1 plot adjacent to {point}: {plot.locations}")
+                plot.points.add(point)
+                # print(f"Added to found plot:  {plot.locations}")
+            elif len(adjacent_plots) > 1:
+                # print(f"Found {len(adjacent_plots)} plots adjacent to {point}:  {''.join(f"{plot.locations} | " for plot in adjacent_plots)}")
+                # print(f"{len(self.plots_found)} plots in map")
+                # plots_to_remove += adjacent_plots
+                self.plots_found = [plot for plot in self.plots_found if plot not in adjacent_plots]
+                # print(f"{len(self.plots_found)} plots in map")
+                points_for_new_merged_plot = set([point] + [point for plot in adjacent_plots for point in plot.points])
+                new_merged_plot = GardenPlot(points_for_new_merged_plot)
+                # print(f"Made new merged plot:  {new_merged_plot.locations}")
+                self.plots_found.append(new_merged_plot)
+                # print(f"{len(self.plots_found)} plots in map")
+                # print(new_merged_plot)
             else:
-                self.plots_found.append(GardenPlot({point}))
-        self.consolidate_plots()
+                # print(f"Found 0 plots adjacent to {point}")
+                new_plot = GardenPlot({point})
+                # print(f"Made new plot:  {new_plot.locations}")
+                self.plots_found.append(new_plot)
 
-    def consolidate_plots(self) -> None:
-        merged_plots_to_add: list[GardenPlot] = []
-        for first_plot in alive_it(self.plots_found):
-            if first_plot in self.plots_merged:
-                continue
+        # self.plots_found = [plot for plot in self.plots_found if plot not in plots_to_remove]
+        # self.consolidate_all_plots()
 
-            for second_plot in self.plots_found:
-                if second_plot in self.plots_merged:
-                    continue
-                if first_plot.check_plot_adjacency(second_plot):
-                    new_merged_plot = GardenPlot(first_plot.points | second_plot.points)
-                    if new_merged_plot not in self.plots_found:
-                        # merged_plots_to_add.append(new_merged_plot)
-                        # duplicate_plots_to_remove.append(first_plot)
-                        # duplicate_plots_to_remove.append(second_plot)
-                        self.plots_found.append(new_merged_plot)
-                        self.plots_merged.append(first_plot)
-                        self.plots_merged.append(second_plot)
-                        self.remove_plot(first_plot)
-                        self.remove_plot(second_plot)
+    @staticmethod
+    def consolidate_plots(plot_list: list[GardenPlot]) -> GardenPlot:
+        new_set = {point for plot in plot_list for point in plot.points}
+        return GardenPlot(new_set)
+
+    def consolidate_all_plots(self) -> None:
+        total_adjacencies_found = 0
+        for char in set([plot.char for plot in self.plots_found]):
+            plots_with_char = [plot for plot in self.plots_found if plot.char == char]
+            if len(plots_with_char) == 1:
+                print(f"There is only 1 plot with letter {char}!")
+            else:
+                print(f"Checking {len(plots_with_char)} plots with letter {char}...")#:  {[plot.locations for plot in plots_with_char]}")
+                for first_plot in plots_with_char:
+                    for second_plot in plots_with_char:
+                        if first_plot == second_plot:
+                            continue
+                        if first_plot.check_plot_adjacency(second_plot):
+                            print(f"Found adjacent plots!  {first_plot.locations} and {second_plot.locations}")
+                            total_adjacencies_found += 1
+        print(f"Total adjacencies found:  {total_adjacencies_found}")
+        # for first_plot in alive_it(self.plots_found):
+        #     adjacent_plots = [plot for plot in self.plots_found if plot.check_plot_adjacency(first_plot)]
+        #     if len(adjacent_plots) > 1:
+        #         print(f"Found {len(adjacent_plots)} plots adjacent to {first_plot}")
+        #         self.plots_found = [plot for plot in self.plots_found if plot not in adjacent_plots]
+        #         new_merged_plot = GardenPlot({point for plot in adjacent_plots for point in plot.points})
+        #         self.plots_found.append(new_merged_plot)
+            
+        
+        # merged_plots_to_add: list[GardenPlot] = []
+        # for first_plot in alive_it(self.plots_found):
+        #     if first_plot in self.plots_merged:
+        #         continue
+
+        #     for second_plot in self.plots_found:
+        #         if second_plot in self.plots_merged:
+        #             continue
+        #         if first_plot.check_plot_adjacency(second_plot):
+        #             new_merged_plot = GardenPlot(first_plot.points | second_plot.points)
+        #             if new_merged_plot not in self.plots_found:
+        #                 # merged_plots_to_add.append(new_merged_plot)
+        #                 # duplicate_plots_to_remove.append(first_plot)
+        #                 # duplicate_plots_to_remove.append(second_plot)
+        #                 self.plots_found.append(new_merged_plot)
+        #                 self.plots_merged.append(first_plot)
+        #                 self.plots_merged.append(second_plot)
+        #                 self.remove_plot(first_plot)
+        #                 self.remove_plot(second_plot)
 
         # for plot in alive_it(merged_plots_to_add):
         #     if plot not in self.plots_found:
@@ -368,9 +420,10 @@ class Map():
     def calculate_total_price(self) -> int:
         # self.deduplicate_plots_found_list()
         # duplicated_plots = list(set(self.plots_found))
-        # all_points = [point for plot in self.plots_found for point in plot.points]
-        # if len(all_points) > len(self.all_points):
-        #     raise ValueError(f"Too many points!  ({len(self.all_points)} vs {len(all_points)}) ({len(set(all_points))} unique)")
+        all_points = [point for plot in self.plots_found for point in plot.points]
+        if len(all_points) > len(self.all_points):
+            raise ValueError(f"Too many points!  ({len(self.all_points)} vs {len(all_points)}) ({len(set(all_points))} unique)")
+        print(f"# of points:  {len(self.all_points)} total in map vs. {len(all_points)} total in plots ({len(set(all_points))} unique)")
         return sum(plot.total_price for plot in self.plots_found)
 
 
@@ -402,7 +455,17 @@ def create_map(filename: Path) -> Map:
 
 def part_one(filename: Path):
     map = create_map(filename)
+    # print(f"There are {len(map.all_points)} points.")
     map.find_plots()
+    map.consolidate_all_plots()
+    # print(f"There are {len(map.all_points)} points.")
+    # map.find_plots()
+    # map.find_plots()
+    # map.find_plots()
+    # map.find_plots()
+    # map.find_plots()
+    # map.find_plots()
+    # print(map.plots_found)
     # for i, plot in enumerate(map.plots_found, start=1):
     #     print(f"Plot #{i}: {plot.char} ({plot.num_points} points) (total price: {plot.total_price})")
     return map.calculate_total_price()
@@ -414,24 +477,46 @@ def part_two(filename: Path):
 
 def main():
     print(f"Part One (example):  {part_one(EXAMPLE)}") # 1930
-    print(f"Part One (input):  {part_one(INPUT)}") # 1223995 is too low; 1428573 is too low; 7498077 is too high; 2322528 is wrong; 1917539 is wrong; 1612525 is wrong; 1705486 is wrong
+    print(f"Part One (input):  {part_one(INPUT)}") # 1223995 is too low; 1428573 is too low; 7498077 is too high; 2322528 is wrong; 1917539 is wrong; 1612525 is wrong; 1705486 is wrong; 1486368 is wrong
     # print()
     # print(f"Part Two (example):  {part_two(EXAMPLE)}") # 
     # print(f"Part Two (input):  {part_two(INPUT)}") # 
 
-    # random_tests()
+    # random_tests2()
+
+def random_tests2():
+    a = Point(0, 0, 'R')
+    b = Point(0, 1, 'R')
+    c = Point(4, 7, 'R')
+
+    plot = GardenPlot({a})
+    print(plot)
+
+    plots = [plot]
+
+    print(f"Is a adjacent to that plot?  {plot.check_point_adjacency(a)}")
+    print([plot for plot in plots if plot.check_point_adjacency(a)])
+
+    print(f"Is b adjacent to that plot?  {plot.check_point_adjacency(b)}")
+    print([plot for plot in plots if plot.check_point_adjacency(b)])
+
+    print(f"Is c adjacent to that plot?  {plot.check_point_adjacency(c)}")
+    print([plot for plot in plots if plot.check_point_adjacency(c)])
 
 
 def random_tests():
     a = Point(1, 2, 'A')
     b = Point(1, 3, 'A')
     c = Point(2, 3, 'A')
-    d = Point(2, 4, 'B')
-    e = Point(1, 2, 'A')
+    d = Point(2, 4, 'A')
+    e = Point(3, 3, 'A')
+    f = Point(7, 4, 'A')
+    g = Point(7, 5, 'A')
 
     plot1 = GardenPlot({a, b, c})
     plot2 = GardenPlot({d})
-    plot3 = GardenPlot({a, b, c})
+    plot3 = GardenPlot({a, b, c, e, d, e, e, e})
+    plot4 = GardenPlot({f, g})
 
     print(plot1)
     print(plot2)
@@ -442,11 +527,19 @@ def random_tests():
     print(a == b)
     print(a == e)
 
-    group = [plot1, plot2, plot3]
+    group = [plot1, plot2, plot3, plot4]
 
     print(plot2 in group)
 
+    new_merged_plot = GardenPlot({point for plot in group for point in plot.points})
+    # print(new_merged_plot)
+
+    print('aaaaaaaaaa')
+    print([plot for plot in group if plot not in [plot1, plot2, plot3]])
+
     # print(a in plot.point_list)
+    print('------------------')
+    print([plot for plot in group if plot.check_plot_adjacency(plot1)])
 
 
 
