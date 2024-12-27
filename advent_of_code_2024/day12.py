@@ -163,24 +163,52 @@ class Point():
             return EdgeType.NON_EDGE
         else:
             raise ValueError(f"{self}")
+
+    def check_adjacency(self, point: "Point") -> bool:
+        if point.char == self.char and abs(self.row_num - point.row_num) <= 1 and abs(self.col_num - point.col_num) <= 1:
+            return True
+        else:
+            return False
         
-
-
-@dataclass(frozen=True)
+@dataclass(unsafe_hash=True)
 class GardenPlot():
-    point_list: list[Point]
+    points: set[Point]
 
     @property
+    def char(self) -> str:
+        if len(set(point.char for point in self.points)) > 1:
+            raise ValueError(f"ERROR:  More than 1 unique plant type in GardenPlot:  {self.points}")
+        else:
+            return list(self.points)[0].char
+
+    @property
+    def num_points(self) -> int:
+        return len(self.points)
+    
+    @property
     def total_edges(self) -> int:
-        return sum(point.edge_count for point in self.point_list if point.edge_count is not None)
+        return sum(point.edge_count for point in self.points if point.edge_count is not None)
 
     @property
     def area(self) -> int:
-        return len(self.point_list)
+        return len(self.points)
 
     @property
     def total_price(self) -> int:
         return self.area * self.total_edges
+
+    def check_point_adjacency(self, point: Point) -> bool:
+        if point.char == self.char and any(x.check_adjacency(point) for x in self.points):
+            return True
+        else:
+            return False
+
+    def check_plot_adjacency(self, plot: "GardenPlot") -> bool:
+        if plot == self:
+            return False
+        if plot.char == self.char and any(self.check_point_adjacency(x) for x in plot.points):
+            return True
+        return False
 
 class Direction(Enum):
     UP = 0
@@ -204,6 +232,8 @@ class MapRow():
 @dataclass
 class Map():
     row_list: list[MapRow]
+    plots_found: list[GardenPlot] = field(default_factory=list)
+    plots_merged: list[GardenPlot] = field(default_factory=list)
 
     @property
     def height(self) -> int:
@@ -268,51 +298,122 @@ class Map():
             new_row_list.append(MapRow(new_point_list, i))
         self.row_list = new_row_list
 
-    def calculate_total_price(self) -> int:
-        ...
-
-@dataclass
-class PlotFinder():
-    current_point: Point
-    map: Map = field(repr=False)
-    plots_found: set[GardenPlot]
-    points_visited: set[Point]
-        
-    def find_next_point(self, direction: Direction) -> Point | None:
-        ''' Determine the next point based on input direction.'''
-        current_row = self.current_point.row_num
-        current_col = self.current_point.col_num
-        
-        match direction:
-            case Direction.UP:
-                next_point = self.map.get_point(current_row - 1, current_col)
-            case Direction.RIGHT:
-                next_point = self.map.get_point(current_row, current_col + 1)
-            case Direction.DOWN:
-                next_point = self.map.get_point(current_row + 1, current_col)
-            case Direction.LEFT:
-                next_point = self.map.get_point(current_row, current_col - 1)
-
-        if next_point is None:
-            return None
-        else:
-            return next_point
- 
     def find_plots(self) -> None:
-        next_points = [self.find_next_point(direction) for direction in Direction]
-        for next_point in next_points:
-            if not next_point:
+        def find_matching_plot(next_point: Point) -> GardenPlot | None:
+                for plot in self.plots_found:
+                    if plot.check_point_adjacency(next_point):
+                        return plot
+                return None
+            
+        for point in alive_it(self.all_points):
+            matching_plot = find_matching_plot(point)
+            if matching_plot:
+                matching_plot.points.add(point)
+            else:
+                self.plots_found.append(GardenPlot({point}))
+        self.consolidate_plots()
+
+    def consolidate_plots(self) -> None:
+        merged_plots_to_add: list[GardenPlot] = []
+        # duplicate_plots_to_remove: list[GardenPlot] = []
+        for first_plot in alive_it(self.plots_found):
+            if first_plot in self.plots_merged:
+                # print('first plot in plots')
                 continue
 
-            self.points_visited.add(next_point)
+            for second_plot in self.plots_found:
+                if second_plot in self.plots_merged:
+                    # print('second plot in plots')
+                    continue
+                if first_plot.check_plot_adjacency(second_plot):
+                    new_merged_plot = GardenPlot(first_plot.points | second_plot.points)
+                    if new_merged_plot not in self.plots_found:
+                        merged_plots_to_add.append(new_merged_plot)
+                        # duplicate_plots_to_remove.append(first_plot)
+                        # duplicate_plots_to_remove.append(second_plot)
+                        self.remove_plot(first_plot)
+                        self.remove_plot(second_plot)
+
+        for plot in alive_it(merged_plots_to_add):
+            if plot not in self.plots_found:
+                # print(f"Adding merged plot: {plot.char} ({plot.num_points} points) (total price: {plot.total_price})")
+                self.plots_found.append(plot)
+
+        # for plot in alive_it(self.plots_found):
+        #     if plot in duplicate_plots_to_remove:
+        #         self.remove_plot(plot)
+
+        # print(self.plots_found)
+
+    def remove_plot(self, plot_to_remove: GardenPlot) -> None:
+        # print(f"Checking: {plot_to_remove.char} ({plot_to_remove.num_points} points) (total price: {plot_to_remove.total_price})")
+        if not plot_to_remove in self.plots_found:
+            return None
+        for i, plot in enumerate(self.plots_found):
+            if plot == plot_to_remove:
+                # print(f"Removing plot: {plot_to_remove.char} ({plot_to_remove.num_points} points) (total price: {plot_to_remove.total_price})")
+                self.plots_found.pop(i)
+
+    def deduplicate_plots_found_list(self) -> None:
+        for i, plot_to_check in enumerate(self.plots_found):
+            if len([plot for plot in self.plots_found if plot.char == plot_to_check.char and len(plot.points) == len(plot_to_check.points)]) > 1:
+                print('removing plot')
+                self.plots_found.pop(i)
+        print('done')
                 
-            if next_point.edge_type:
-                ...
+
+    def calculate_total_price(self) -> int:
+        # self.deduplicate_plots_found_list()
+        # duplicated_plots = list(set(self.plots_found))
+        # all_points = [point for plot in self.plots_found for point in plot.points]
+        # if len(all_points) > len(self.all_points):
+        #     raise ValueError(f"Too many points!  ({len(self.all_points)} vs {len(all_points)}) ({len(set(all_points))} unique)")
+        return sum(plot.total_price for plot in self.plots_found)
+
+# @dataclass
+# class PlotFinder():
+#     current_point: Point
+#     map: Map = field(repr=False)
+#     plots_found: list[GardenPlot] = field(default_factory=list)
+#     points_visited: set[Point] = field(default_factory=set)
+        
+#     def find_next_point(self, direction: Direction) -> Point | None:
+#         ''' Determine the next point based on input direction.'''
+#         current_row = self.current_point.row_num
+#         current_col = self.current_point.col_num
+        
+#         match direction:
+#             case Direction.UP:
+#                 next_point = self.map.get_point(current_row - 1, current_col)
+#             case Direction.RIGHT:
+#                 next_point = self.map.get_point(current_row, current_col + 1)
+#             case Direction.DOWN:
+#                 next_point = self.map.get_point(current_row + 1, current_col)
+#             case Direction.LEFT:
+#                 next_point = self.map.get_point(current_row, current_col - 1)
+
+#         if next_point is None:
+#             return None
+#         else:
+#             return next_point
+ 
+#     def find_plots(self) -> None:
+#         for point in self.map.all_points:
+#             def find_matching_plot(next_point: Point) -> GardenPlot | None:
+#                 for plot in self.plots_found:
+#                     if plot.check_adjacency(next_point):
+#                         return plot
+#                 return None
                 
-            self.current_point = next_point
-            self.points_visited.add(next_point)
-            self.find_plots()
-        return None
+#             matching_plot = find_matching_plot(next_point)
+#             if matching_plot:
+#                 matching_plot.point_list.append(next_point)
+#             else:
+#                 self.plots_found.append(GardenPlot([next_point]))
+                
+#             self.current_point = next_point
+#             self.points_visited.add(next_point)
+#         return None
 
 
 def create_map_row(line: str, row_num: int, total_map_height: int) -> MapRow:
@@ -343,12 +444,10 @@ def create_map(filename: Path) -> Map:
 
 def part_one(filename: Path):
     map = create_map(filename)
-    print(map)
-    # print(map.all_plant_types)
-    # print(map.total_price)
-    # print(map.all_points)
-    for point in map.all_points:
-        print(point.edge_type, point.char)
+    map.find_plots()
+    # for i, plot in enumerate(map.plots_found, start=1):
+    #     print(f"Plot #{i}: {plot.char} ({plot.num_points} points) (total price: {plot.total_price})")
+    return map.calculate_total_price()
 
 
 def part_two(filename: Path):
@@ -356,25 +455,36 @@ def part_two(filename: Path):
 
 
 def main():
-    # print(f"Part One (example):  {part_one(EXAMPLE)}") # 1930
-    # print(f"Part One (input):  {part_one(INPUT)}") # 
+    print(f"Part One (example):  {part_one(EXAMPLE)}") # 1930
+    print(f"Part One (input):  {part_one(INPUT)}") # 1223995 is too low; 1428573 is too low; 7498077 is too high; 2322528 is wrong; 1917539 is wrong
     # print()
     # print(f"Part Two (example):  {part_two(EXAMPLE)}") # 
     # print(f"Part Two (input):  {part_two(INPUT)}") # 
 
-    random_tests()
+    # random_tests()
 
 
 def random_tests():
     a = Point(1, 2, 'A')
     b = Point(1, 3, 'A')
     c = Point(2, 3, 'A')
-    d = Point(2, 2, 'A')
+    d = Point(2, 4, 'B')
+    e = Point(1, 2, 'A')
 
-    plot = GardenPlot([a, b, c, d])
-    print(plot)
+    plot1 = GardenPlot({a, b, c})
+    plot2 = GardenPlot({d})
+    plot3 = GardenPlot({a, b, c})
 
-    print(a in plot.point_list)
+    print(plot1)
+    print(plot2)
+
+    print(plot1.check_plot_adjacency(plot2))
+    print(plot1.check_plot_adjacency(plot3))
+
+    print(a == b)
+    print(a == e)
+
+    # print(a in plot.point_list)
 
 
 
