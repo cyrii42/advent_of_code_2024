@@ -92,7 +92,7 @@ from rich import print
 from pprint import pprint
 from copy import deepcopy
 from typing import NamedTuple, Protocol, Optional
-from enum import Enum
+from enum import Enum, IntEnum
 from dataclasses import dataclass, field
 from string import ascii_letters
 import itertools
@@ -109,7 +109,7 @@ def ingest_data(filename: Path) -> list[str]:
     with open(filename, 'r') as f:
         return f.read().split()
 
-class EdgeType(Enum):
+class EdgeType(IntEnum):
     NON_EDGE = 0
     SINGLE_EDGE = 1
     UPPER_RIGHT_CORNER = 2
@@ -119,7 +119,7 @@ class EdgeType(Enum):
     PENINSULA = 6
     SINGLE_POINT_PLOT = 7
 
-@dataclass
+@dataclass(frozen=True)
 class Point():
     row_num: int
     col_num: int
@@ -128,14 +128,20 @@ class Point():
     right: Optional[str] = None
     down: Optional[str] = None
     left: Optional[str] = None
-    edge_count: Optional[int] = None
-    edge_type: Optional[EdgeType] = None
 
     @property
     def all_neighbor_chars(self) -> list[str | None]:
         return [self.up, self.right, self.down, self.left]
 
-    def get_edge_type(self) -> EdgeType:
+    @property
+    def edge_count(self) -> int:
+        if not any(x is not None for x in self.all_neighbor_chars):
+            raise ValueError
+        else:
+            return len([neighbor for neighbor in self.all_neighbor_chars if neighbor is None or neighbor != self.char])
+
+    @property
+    def edge_type(self) -> EdgeType:
         if self.edge_count == 4:
             return EdgeType.SINGLE_POINT_PLOT
         if self.edge_count == 3:
@@ -238,30 +244,29 @@ class Map():
         return row.get_point(col_num)
 
     def find_neighbors(self) -> None:
-        for point in self.all_points:
-            current_row = point.row_num
-            current_col = point.col_num
-            
-            up = self.get_point(current_row - 1, current_col)
-            right = self.get_point(current_row, current_col + 1)
-            down = self.get_point(current_row + 1, current_col)
-            left = self.get_point(current_row, current_col - 1)
-                    
-            point.up = up.char if up is not None else None
-            point.right = right.char if right is not None else None
-            point.down = down.char if down is not None else None
-            point.left = left.char if left is not None else None
+        new_row_list = []
 
-            all_neighbors = [up, right, down, left]
-            point.edge_count = len([neighbor for neighbor in all_neighbors if neighbor is None or neighbor.char != point.char])
-            point.edge_type = point.get_edge_type()
-            # if any(x is None for x in all_neighbors):
-            #     point.plot_edge = True
-            # elif any(x.char != up.char for x in all_neighbors): # type: ignore
-            #     point.plot_edge = True
-            # else:
-            #     point.plot_edge = False
+        for i, row in enumerate(self.row_list):
+            new_point_list = []
+            for point in row.point_list:
+                current_row = point.row_num
+                current_col = point.col_num
+                
+                up = self.get_point(current_row - 1, current_col)
+                right = self.get_point(current_row, current_col + 1)
+                down = self.get_point(current_row + 1, current_col)
+                left = self.get_point(current_row, current_col - 1)
 
+                new_point = Point(row_num=point.row_num,
+                            col_num=point.col_num,
+                            char=point.char,
+                            up=up.char if up is not None else None,
+                            right=right.char if right is not None else None,
+                            down=down.char if down is not None else None,
+                            left=left.char if left is not None else None)
+                new_point_list.append(new_point)
+            new_row_list.append(MapRow(new_point_list, i))
+        self.row_list = new_row_list
 
     def calculate_total_price(self) -> int:
         ...
@@ -271,7 +276,7 @@ class PlotFinder():
     current_point: Point
     map: Map = field(repr=False)
     plots_found: set[GardenPlot]
-    points_visited: list[Point]
+    points_visited: set[Point]
         
     def find_next_point(self, direction: Direction) -> Point | None:
         ''' Determine the next point based on input direction.'''
@@ -295,17 +300,17 @@ class PlotFinder():
  
     def find_plots(self) -> None:
         next_points = [self.find_next_point(direction) for direction in Direction]
-        for point in next_points:
-            if not point:
+        for next_point in next_points:
+            if not next_point:
                 continue
 
-            self.points_visited.append(point)
+            self.points_visited.add(next_point)
                 
-            if not any(x == self.current_point.char for x in [point.all_neighbor_chars]):
+            if next_point.edge_type:
                 ...
                 
-            self.current_point = point
-            self.points_visited.append(point)
+            self.current_point = next_point
+            self.points_visited.add(next_point)
             self.find_plots()
         return None
 
@@ -339,9 +344,9 @@ def create_map(filename: Path) -> Map:
 def part_one(filename: Path):
     map = create_map(filename)
     print(map)
-    print(map.all_plant_types)
-    print(map.total_price)
-    print(map.all_points)
+    # print(map.all_plant_types)
+    # print(map.total_price)
+    # print(map.all_points)
     for point in map.all_points:
         print(point.edge_type, point.char)
 
@@ -351,17 +356,25 @@ def part_two(filename: Path):
 
 
 def main():
-    print(f"Part One (example):  {part_one(EXAMPLE)}") # 1930
+    # print(f"Part One (example):  {part_one(EXAMPLE)}") # 1930
     # print(f"Part One (input):  {part_one(INPUT)}") # 
     # print()
     # print(f"Part Two (example):  {part_two(EXAMPLE)}") # 
     # print(f"Part Two (input):  {part_two(INPUT)}") # 
 
-    # random_tests()
+    random_tests()
 
 
 def random_tests():
-    ...
+    a = Point(1, 2, 'A')
+    b = Point(1, 3, 'A')
+    c = Point(2, 3, 'A')
+    d = Point(2, 2, 'A')
+
+    plot = GardenPlot([a, b, c, d])
+    print(plot)
+
+    print(a in plot.point_list)
 
 
 
