@@ -109,10 +109,241 @@ def ingest_data(filename: Path) -> list[str]:
     with open(filename, 'r') as f:
         return f.read().split()
 
+class EdgeType(Enum):
+    NON_EDGE = 0
+    SINGLE_EDGE = 1
+    UPPER_RIGHT_CORNER = 2
+    UPPER_LEFT_CORNER = 3
+    LOWER_RIGHT_CORNER = 4
+    LOWER_LEFT_CORNER = 5
+    PENINSULA = 6
+    SINGLE_POINT_PLOT = 7
+
+@dataclass
+class Point():
+    row_num: int
+    col_num: int
+    char: str
+    up: Optional[str] = None
+    right: Optional[str] = None
+    down: Optional[str] = None
+    left: Optional[str] = None
+    edge_count: Optional[int] = None
+    edge_type: Optional[EdgeType] = None
+
+    @property
+    def all_neighbor_chars(self) -> list[str | None]:
+        return [self.up, self.right, self.down, self.left]
+
+    def get_edge_type(self) -> EdgeType:
+        if self.edge_count == 4:
+            return EdgeType.SINGLE_POINT_PLOT
+        if self.edge_count == 3:
+            return EdgeType.PENINSULA
+        if self.edge_count == 2:
+            if (self.up is None or self.up != self.char) and (self.right is None or self.right != self.char):
+                return EdgeType.UPPER_RIGHT_CORNER
+            if (self.up is None or self.up != self.char) and (self.left is None or self.left != self.char):
+                return EdgeType.UPPER_LEFT_CORNER
+            if (self.down is None or self.down != self.char) and (self.right is None or self.right != self.char):
+                return EdgeType.LOWER_RIGHT_CORNER
+            if (self.down is None or self.down != self.char) and (self.left is None or self.left != self.char):
+                return EdgeType.LOWER_LEFT_CORNER
+            else:
+                return EdgeType.SINGLE_EDGE
+        if self.edge_count == 1:
+            return EdgeType.SINGLE_EDGE
+        if self.edge_count == 0:
+            return EdgeType.NON_EDGE
+        else:
+            raise ValueError(f"{self}")
+        
+
+
+@dataclass(frozen=True)
+class GardenPlot():
+    point_list: list[Point]
+
+    @property
+    def total_edges(self) -> int:
+        return sum(point.edge_count for point in self.point_list if point.edge_count is not None)
+
+    @property
+    def area(self) -> int:
+        return len(self.point_list)
+
+    @property
+    def total_price(self) -> int:
+        return self.area * self.total_edges
+
+class Direction(Enum):
+    UP = 0
+    RIGHT = 1
+    DOWN = 2
+    LEFT = 3
+
+@dataclass
+class MapRow():
+    point_list: list[Point]
+    row_num: int
+
+    @property
+    def width(self):
+        return len(self.point_list)
+
+    def get_point(self, col_num: int) -> Point:
+        return self.point_list[col_num]
+
+
+@dataclass
+class Map():
+    row_list: list[MapRow]
+
+    @property
+    def height(self) -> int:
+        return len(self.row_list)
+
+    @property
+    def width(self) -> int:
+        return self.row_list[0].width
+
+    @property
+    def all_points(self) -> list[Point]:
+        return [point for row in self.row_list for point in row.point_list]
+
+    @property
+    def all_plant_types(self) -> list[str]:
+        return sorted(list(set([point.char for point in self.all_points])))
+
+    @property
+    def total_edges(self) -> int:
+        return sum(point.edge_count for point in self.all_points if point.edge_count is not None)
+
+    @property
+    def total_price(self) -> int:
+        return self.total_edges * len(self.all_points)
+
+    def __post_init__(self):
+        self.find_neighbors()
+
+    def get_row(self, col_num: int) -> MapRow:
+        return self.row_list[col_num]
+
+    def get_point(self, row_num: int, col_num: int) -> Point | None:
+        if row_num < 0 or col_num < 0:
+            return None
+        if row_num >= self.width or col_num >= self.height:
+            return None
+        row = self.row_list[row_num]
+        return row.get_point(col_num)
+
+    def find_neighbors(self) -> None:
+        for point in self.all_points:
+            current_row = point.row_num
+            current_col = point.col_num
+            
+            up = self.get_point(current_row - 1, current_col)
+            right = self.get_point(current_row, current_col + 1)
+            down = self.get_point(current_row + 1, current_col)
+            left = self.get_point(current_row, current_col - 1)
+                    
+            point.up = up.char if up is not None else None
+            point.right = right.char if right is not None else None
+            point.down = down.char if down is not None else None
+            point.left = left.char if left is not None else None
+
+            all_neighbors = [up, right, down, left]
+            point.edge_count = len([neighbor for neighbor in all_neighbors if neighbor is None or neighbor.char != point.char])
+            point.edge_type = point.get_edge_type()
+            # if any(x is None for x in all_neighbors):
+            #     point.plot_edge = True
+            # elif any(x.char != up.char for x in all_neighbors): # type: ignore
+            #     point.plot_edge = True
+            # else:
+            #     point.plot_edge = False
+
+
+    def calculate_total_price(self) -> int:
+        ...
+
+@dataclass
+class PlotFinder():
+    current_point: Point
+    map: Map = field(repr=False)
+    plots_found: set[GardenPlot]
+    points_visited: list[Point]
+        
+    def find_next_point(self, direction: Direction) -> Point | None:
+        ''' Determine the next point based on input direction.'''
+        current_row = self.current_point.row_num
+        current_col = self.current_point.col_num
+        
+        match direction:
+            case Direction.UP:
+                next_point = self.map.get_point(current_row - 1, current_col)
+            case Direction.RIGHT:
+                next_point = self.map.get_point(current_row, current_col + 1)
+            case Direction.DOWN:
+                next_point = self.map.get_point(current_row + 1, current_col)
+            case Direction.LEFT:
+                next_point = self.map.get_point(current_row, current_col - 1)
+
+        if next_point is None:
+            return None
+        else:
+            return next_point
+ 
+    def find_plots(self) -> None:
+        next_points = [self.find_next_point(direction) for direction in Direction]
+        for point in next_points:
+            if not point:
+                continue
+
+            self.points_visited.append(point)
+                
+            if not any(x == self.current_point.char for x in [point.all_neighbor_chars]):
+                ...
+                
+            self.current_point = point
+            self.points_visited.append(point)
+            self.find_plots()
+        return None
+
+
+def create_map_row(line: str, row_num: int, total_map_height: int) -> MapRow:
+    total_map_width = len(line)
+    point_list = []
+    
+    for col_num, char in enumerate(line):
+        if row_num == 0 or row_num == (total_map_height - 1) or col_num == 0 or col_num == (total_map_width - 1):
+            point_list.append(Point(row_num=row_num, 
+                                    col_num=col_num, 
+                                    char=char))
+        else:
+            point_list.append(Point(row_num=row_num, 
+                                    col_num=col_num, 
+                                    char=char))
+            
+    return MapRow(point_list, row_num)
+
+
+def create_map(filename: Path) -> Map:
+    with open(filename, 'r') as f:
+        line_list = [line.strip('\n') for line in f.readlines()]
+
+    row_list = [create_map_row(line, row_num, len(line_list)) for row_num, line in enumerate(line_list)]
+        
+    return Map(row_list)
 
 
 def part_one(filename: Path):
-    ...
+    map = create_map(filename)
+    print(map)
+    print(map.all_plant_types)
+    print(map.total_price)
+    print(map.all_points)
+    for point in map.all_points:
+        print(point.edge_type, point.char)
 
 
 def part_two(filename: Path):
@@ -126,6 +357,11 @@ def main():
     # print(f"Part Two (example):  {part_two(EXAMPLE)}") # 
     # print(f"Part Two (input):  {part_two(INPUT)}") # 
 
+    # random_tests()
+
+
+def random_tests():
+    ...
 
 
 
