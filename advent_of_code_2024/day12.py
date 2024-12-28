@@ -124,10 +124,11 @@ class Point():
     row_num: int
     col_num: int
     char: str
-    up: Optional[str] = field(default=None, repr=False)
-    right: Optional[str] = field(default=None, repr=False)
-    down: Optional[str] = field(default=None, repr=False)
-    left: Optional[str] = field(default=None, repr=False)
+    up: Optional[str] = field(default=None)
+    right: Optional[str] = field(default=None)
+    down: Optional[str] = field(default=None)
+    left: Optional[str] = field(default=None)
+    edge_count: Optional[int] = field(default=None)
 
     @property
     def all_neighbor_chars(self) -> list[str | None]:
@@ -137,12 +138,9 @@ class Point():
     def location(self) -> str:
         return f"({self.row_num},{self.col_num})"
 
-    @property
-    def edge_count(self) -> int:
-        if not any(x is not None for x in self.all_neighbor_chars):
-            raise ValueError
-        else:
-            return len([neighbor for neighbor in self.all_neighbor_chars if neighbor is None or neighbor != self.char])
+    # @property
+    # def edge_count(self) -> int:
+    #     return len([neighbor for neighbor in self.all_neighbor_chars if neighbor is None or neighbor != self.char])
 
     @property
     def edge_type(self) -> EdgeType:
@@ -240,8 +238,8 @@ class MapRow():
 @dataclass
 class Map():
     row_list: list[MapRow]
-    plots_found: list[GardenPlot] = field(default_factory=list)
-    plots_merged: list[GardenPlot] = field(default_factory=list)
+    plots_found: list[GardenPlot] = field(default_factory=list, repr=False)
+    plots_merged: list[GardenPlot] = field(default_factory=list, repr=False)
 
     @property
     def height(self) -> int:
@@ -295,19 +293,21 @@ class Map():
                 down = self.get_point(current_row + 1, current_col)
                 left = self.get_point(current_row, current_col - 1)
 
+                edge_count = len([x for x in [up, right, down, left] if x is None or x.char != point.char])
+
                 new_point = Point(row_num=point.row_num,
                             col_num=point.col_num,
                             char=point.char,
                             up=up.char if up is not None else None,
                             right=right.char if right is not None else None,
                             down=down.char if down is not None else None,
-                            left=left.char if left is not None else None)
+                            left=left.char if left is not None else None,
+                            edge_count=edge_count)
                 new_point_list.append(new_point)
             new_row_list.append(MapRow(new_point_list, i))
         self.row_list = new_row_list
 
     def find_plots(self) -> None:
-        plots_to_remove = []
         for point in alive_it(self.all_points):
             adjacent_plots = [plot for plot in self.plots_found if plot.check_point_adjacency(point)]
             if len(adjacent_plots) == 1:
@@ -318,7 +318,6 @@ class Map():
             elif len(adjacent_plots) > 1:
                 # print(f"Found {len(adjacent_plots)} plots adjacent to {point}:  {''.join(f"{plot.locations} | " for plot in adjacent_plots)}")
                 # print(f"{len(self.plots_found)} plots in map")
-                # plots_to_remove += adjacent_plots
                 self.plots_found = [plot for plot in self.plots_found if plot not in adjacent_plots]
                 # print(f"{len(self.plots_found)} plots in map")
                 points_for_new_merged_plot = set([point] + [point for plot in adjacent_plots for point in plot.points])
@@ -332,6 +331,8 @@ class Map():
                 new_plot = GardenPlot({point})
                 # print(f"Made new plot:  {new_plot.locations}")
                 self.plots_found.append(new_plot)
+        print(f"{len(self.plots_found)} plots in map")
+
 
         # self.plots_found = [plot for plot in self.plots_found if plot not in plots_to_remove]
         # self.consolidate_all_plots()
@@ -420,10 +421,10 @@ class Map():
     def calculate_total_price(self) -> int:
         # self.deduplicate_plots_found_list()
         # duplicated_plots = list(set(self.plots_found))
-        all_points = [point for plot in self.plots_found for point in plot.points]
-        if len(all_points) > len(self.all_points):
-            raise ValueError(f"Too many points!  ({len(self.all_points)} vs {len(all_points)}) ({len(set(all_points))} unique)")
-        print(f"# of points:  {len(self.all_points)} total in map vs. {len(all_points)} total in plots ({len(set(all_points))} unique)")
+        # all_points = [point for plot in self.plots_found for point in plot.points]
+        # if len(all_points) > len(self.all_points):
+        #     raise ValueError(f"Too many points!  ({len(self.all_points)} vs {len(all_points)}) ({len(set(all_points))} unique)")
+        # print(f"# of points:  {len(self.all_points)} total in map vs. {len(all_points)} total in plots ({len(set(all_points))} unique)")
         return sum(plot.total_price for plot in self.plots_found)
 
 
@@ -457,7 +458,8 @@ def part_one(filename: Path):
     map = create_map(filename)
     # print(f"There are {len(map.all_points)} points.")
     map.find_plots()
-    map.consolidate_all_plots()
+    print(map)
+    # map.consolidate_all_plots()
     # print(f"There are {len(map.all_points)} points.")
     # map.find_plots()
     # map.find_plots()
@@ -466,8 +468,8 @@ def part_one(filename: Path):
     # map.find_plots()
     # map.find_plots()
     # print(map.plots_found)
-    # for i, plot in enumerate(map.plots_found, start=1):
-    #     print(f"Plot #{i}: {plot.char} ({plot.num_points} points) (total price: {plot.total_price})")
+    for i, plot in enumerate(sorted(map.plots_found, key=lambda x: x.char), start=1):
+        print(f"Plot #{i}: {plot.char} ({plot.num_points} points) (total price: {plot.total_price})")
     return map.calculate_total_price()
 
 
