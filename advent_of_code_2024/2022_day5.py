@@ -177,11 +177,10 @@ def parse_procedure_list(procedure_str_list: list[str]) -> list[Procedure]:
     output_list = []
     for procedure_str in procedure_str_list:
         procedure_str_split = procedure_str.split()
-        output_list.append(Procedure(
-                            origin=int(procedure_str_split[3]),
-                            destination=int(procedure_str_split[5]),
-                            quantity=int(procedure_str_split[1])
-                            ))
+        output_list.append(Procedure(origin=int(procedure_str_split[3]),
+                                     destination=int(procedure_str_split[5]),
+                                     quantity=int(procedure_str_split[1])
+                                    ))
     return output_list
 
 def execute_procedure_list(procedure_list: list[Procedure], stack_list: list[Stack]) -> list[Stack]:

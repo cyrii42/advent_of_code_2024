@@ -97,20 +97,21 @@ INPUT = DATA_DIR / '2022_day7_input.txt'
 class File():
     name: str
     size: int
-    dir_name: str
 
 @dataclass
 class Directory():
-    id: int
-    level: int
     name: str
+    level: int
     parent: Optional['Directory'] = field(default=None, repr=False)
     files: list[File] = field(default_factory=list)
     children: list['Directory'] = field(default_factory=list)
 
+    def __eq__(self, other):
+        return self.name == other.name
+
     @property
     def children_names(self) -> list[str]:
-        return [dir.name for dir in self.children]
+        return [dir.name for dir in self.children if dir.name != self.name]
 
     @property
     def total_size(self) -> int:
@@ -123,6 +124,12 @@ class Directory():
 class Filesystem():
     terminal_output: list[str]
     dir_list: list[Directory]
+
+    def find_dir(self, dir: Directory) -> Directory:
+        try:
+            return next(dir for dir in self.dir_list if dir == dir)
+        except StopIteration:
+            raise FileNotFoundError(f"Directory \"{dir.name}\" not found in filesystem.")
 
     def find_dir_by_name(self, name: str) -> Directory:
         try:
@@ -140,26 +147,37 @@ class Filesystem():
                 dir.parent.children.append(dir)
 
     def populate_files(self):
-        current_dir = self.find_dir_by_name('/')
+        current_dir = self.dir_list[0]
+        dir_level = 0
         for line in self.terminal_output:
+            if line == '$ cd /':
+                current_dir = self.dir_list[0]
+                dir_level = 0
+                continue
             if line == '$ cd ..':
+                dir_level =- 1 if dir_level > 0 else 0
                 if current_dir.parent is None:
-                    current_dir = self.find_dir_by_name('/')
+                    current_dir = self.dir_list[0]
                 else:
-                    current_dir = self.find_dir_by_name(current_dir.parent.name)
+                    current_dir = current_dir.parent
+                continue
             elif line.startswith('$ cd'):
+                dir_level += 1
                 dir_name = line.removeprefix('$ cd ')
                 current_dir = self.find_dir_by_name(dir_name)
             elif line[0].isdigit():
                 file_size, file_name = line.split(' ')
-                file = File(file_name, int(file_size), current_dir.name)
+                file = File(file_name, int(file_size))
                 current_dir.files.append(file)
-            # elif line.startswith('dir'):
-            #     child_dir_name = line.removeprefix('dir ')
-            #     if child_dir_name in current_dir.children_names:
-            #         continue
-            #     else:
-            #         current_dir.children.append(self.find_dir_by_name(child_dir_name))
+            elif line.startswith('dir'):
+                child_dir_name = line.removeprefix('dir ')
+                child_dir = Directory(name=child_dir_name, level=dir_level+1)
+                if child_dir in current_dir.children:
+                    continue
+                else:
+                    print(f"Couldn't find child directory {child_dir.name} in directory {current_dir.name}'s list of children ({current_dir.children_names})!!")
+                    # print(f"But it does exist:  {self.find_dir_by_name(child_dir_name)}")
+                    current_dir.children.append(child_dir)
             else:
                 continue
 
@@ -176,14 +194,20 @@ def ingest_data(filename: Path) -> list[str]:
     return line_list
 
 def create_filesystem(terminal_output: list[str]) -> Filesystem:  
-    dir_list = [Directory(id=0, level=0, name='/')]
+    dir_list = [Directory(name='/', level=0)]
+    current_dir = dir_list[0]
     dir_level = 0
     for line in terminal_output:
         if line == '$ cd /':
             dir_level = 0
+            current_dir = dir_list[0]
             continue
         if line == '$ cd ..':
             dir_level =- 1 if dir_level > 0 else 0
+            if current_dir.parent is None:
+                current_dir = dir_list[0]
+            else:
+                current_dir = current_dir.parent
             continue
         if line == '$ ls':
             continue
@@ -191,10 +215,17 @@ def create_filesystem(terminal_output: list[str]) -> Filesystem:
             dir_name = line.removeprefix('$ cd ')
             parent = dir_list[-1] if dir_level > 0 else dir_list[0]
             dir_level += 1   
-            dir_list.append(Directory(id=len(dir_list),
-                                        level=dir_level, 
-                                        name=dir_name,
-                                        parent=parent))
+            dir_list.append(Directory(name=dir_name,
+                                      level=dir_level,
+                                      parent=parent))
+            continue
+    for line in terminal_output:
+        if line.startswith('dir'):
+            child_dir_name = line.removeprefix('dir ')
+            child_dir = Directory(name=child_dir_name, level=dir_level+1, parent=current_dir)
+            if Directory(child_dir.name, dir_level+1) not in dir_list:
+                dir_list.append(child_dir)
+            
     return Filesystem(terminal_output, dir_list)
 
 

@@ -89,7 +89,7 @@ def split_rucksacks(line_list: list[str]) -> list[tuple[str, str]]:
 def find_mistake(rucksack: tuple[str, str]) -> str:
     compartment1, compartment2 = rucksack
     intersection = set(compartment1) & set(compartment2)
-    if len(list(intersection)) > 1:
+    if len(intersection) > 1:
         raise ValueError
     
     return list(intersection)[0]
@@ -108,8 +108,8 @@ def find_badge(rucksack_list: list[str]) -> str:
     rucksack_set_list = [set(x) for x in rucksack_list]
     intersection = set.intersection(*rucksack_set_list)
 
-    if len(list(intersection)) != 1:
-        raise ValueError(f"Intersection contains {len(list(intersection))} elements!")
+    if len(intersection) != 1:
+        raise ValueError(f"Intersection contains {len(intersection)} elements!")
     
     return list(intersection)[0]
     
